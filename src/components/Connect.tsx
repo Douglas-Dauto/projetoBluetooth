@@ -4,6 +4,7 @@ import { useContext, useEffect, useRef, useState } from 'react';
 import { AppContext } from '../../App';
 import ButtonMap from './ButtonMap';
 import ModalMap from './ModalMap';
+import ModalWarn from './ModalWarn';
 
 interface Props {
     navigation: Object
@@ -11,25 +12,24 @@ interface Props {
 
 function Connect(props: Props) {
     const rotateAnim = useRef(new Animated.Value(0)).current;
+    const scaleAnim = useRef(new Animated.Value(1)).current;
     const [controlLoad, setControlLoad] = useState<boolean>(false);
     const [devices, setDevices] = useState<Array<{ id: string, name: string, rssi: number }>>([]);
     const [controlModalMap, setControlModalMap] = useState(false);
+    const [controlModalWarn, setControlModalWarn] = useState(false);
 
     const BleManager = useContext(AppContext)!;
-
-    setInterval(() => {
-
-    }, 10);
 
     useEffect(() => {
         Animated.loop(
             Animated.timing(rotateAnim, {
                 toValue: 1,
-                duration: 1000, // tempo em milissegundos para uma volta completa
+                duration: 1000,
                 easing: Easing.linear,
                 useNativeDriver: true,
             })
         ).start();
+        
     }, [rotateAnim]);
 
     const rotateInterpolate = rotateAnim.interpolate({
@@ -41,21 +41,44 @@ function Connect(props: Props) {
         transform: [{ rotate: rotateInterpolate }],
     };
 
+    const animatedStyleScale = {
+        transform: [{ scale: scaleAnim }],
+    };
+
     function searchDevices() {
+        Animated.sequence(
+            [
+                Animated.timing(scaleAnim, {
+                    toValue: 1.2,
+                    duration: 200,
+                    easing: Easing.linear,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(scaleAnim, {
+                    toValue: 1,
+                    duration: 200,
+                    easing: Easing.linear,
+                    useNativeDriver: true,
+                })
+            ]
+        ).start();
+
         setControlLoad(true);
 
         setTimeout(async () => {
-            const bleManagerEmitter = new NativeEventEmitter(NativeModules.BleManager);
-            
             BleManager.getDiscoveredPeripherals().then((devices) => {
                 let newDevices: Array<{ id: string, name: string, rssi: number }> = devices.map((device) => { return { id: device.id!, name: device.name!, rssi: device.rssi } });
                 newDevices = newDevices.filter((device) => device.name !== null);
+
+                if (newDevices.length <= 0) {
+                    setControlModalWarn(true);
+                }
+
                 setDevices(newDevices);
             });
 
-            await BleManager.scan([], 10, true).then(() => {
+            await BleManager.scan([], 5, true);
 
-            });
             setControlLoad(false);
         }, 2000);
     }
@@ -66,7 +89,7 @@ function Connect(props: Props) {
 
     return (
         <View style={styles.container}>
-            <Pressable style={styles.buttonConnect} onPress={searchDevices}><Text style={styles.textButtonConnect}>{'search\n devices'}</Text></Pressable>
+            <Animated.View style={animatedStyleScale}><Pressable style={styles.buttonConnect} onPress={searchDevices}><Text style={styles.textButtonConnect}>{'search\n devices'}</Text></Pressable></Animated.View>
 
             <Animated.View style={animatedStyle}>
                 {controlLoad && <Load width={70} height={70} style={styles.load} />}
@@ -82,6 +105,7 @@ function Connect(props: Props) {
             </ScrollView>
 
             {controlModalMap && <ModalMap devices={devices} setControlModalMap={setControlModalMap} />}
+            {controlModalWarn && <ModalWarn warn={'devices not found'} setControlModalWarn={setControlModalWarn} />}
         </View>
     );
 }

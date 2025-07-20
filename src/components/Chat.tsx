@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import WriteMessage from './WriteMessage';
+import ModalWarn from './ModalWarn';
 
 interface Props {
     id: string;
 }
 
 function Chat(props: Props) {
-    const [messages, setMessages] = useState<Array<{ message: string, isMe: boolean }>>([{ message: 'A tecnologia tem transformado.', isMe: true }, { message: 'Oi tudo bem?', isMe: false }, { message: 'Oi tudo bem?', isMe: true }]);
+    const [messages, setMessages] = useState<Array<{ message: string, isMe: boolean }>>([]);
     const scrollViewRef = useRef<ScrollView>(null);
+    const [controlModalWarn, setControlModalWarn] = useState(false);
 
     useEffect(() => {
         moveScroll();
@@ -31,9 +33,9 @@ function Chat(props: Props) {
                     </ View>)}
                 </View>
             </ScrollView>
-            <WriteMessage messages={messages} setMessages={setMessages} moveScroll={moveScroll} idDevice={props.id} />
+            <WriteMessage setControlModalWarn={setControlModalWarn} messages={messages} setMessages={setMessages} moveScroll={moveScroll} idDevice={props.id} />
+            {controlModalWarn && <ModalWarn warn={'error sending message'} setControlModalWarn={setControlModalWarn} />}
         </>
-        
     );
 }
 

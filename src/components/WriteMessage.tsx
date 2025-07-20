@@ -1,32 +1,58 @@
 import { useContext, useEffect, useRef, useState } from 'react';
-import { Image, StyleSheet, Text, TextInput, View, Pressable, Alert, NativeEventEmitter, NativeModules, } from 'react-native';
+import { Easing, Keyboard, Image, StyleSheet, Text, TextInput, View, Pressable, Alert, NativeEventEmitter, NativeModules, Animated, } from 'react-native';
 import Play from '../assets/icons/play-fill.svg';
+import Load from '../assets/icons/arrow-clockwise.svg';
 import { AppContext } from '../../App';
+import { Buffer } from 'buffer';
 
 interface Props {
     messages: Array<{ message: string, isMe: boolean }>;
     setMessages: Function;
     moveScroll: Function;
     idDevice: string;
+    setControlModalWarn: Function;
 }
 
 function WriteMessage(props: Props) {
     const [text, setText] = useState('');
+    const [controlLoad, setControlLoad] = useState<boolean>(false);
+    const rotateAnim = useRef(new Animated.Value(0)).current;
     const BleManager = useContext(AppContext)!;
 
     useEffect(() => {
-        const notificationListener = new NativeEventEmitter(NativeModules.BleManager).addListener(
-            'BleManagerDidUpdateValueForCharacteristic',
-            async ({ value, peripheral, characteristic, service }) => {
+        const removeListener = BleManager.onDidUpdateValueForCharacteristic(
+            ({ value }) => {
                 if (value && Array.isArray(value)) {
                     const message = Buffer.from(value).toString('utf-8');
-                    props.setMessages([...props.messages, { message: message, isMe: false }]);
+                    const messages = props.messages;
+                    messages.push({ message: message, isMe: false });
+                    props.setMessages([...messages]);
                 }
             }
         );
 
-        return () => notificationListener.remove();
-    }, []);
+        return () => removeListener.remove();
+    }, [props.messages]);
+
+    useEffect(() => {
+        Animated.loop(
+            Animated.timing(rotateAnim, {
+                toValue: 1,
+                duration: 1000,
+                easing: Easing.linear,
+                useNativeDriver: true,
+            })
+        ).start();
+    }, [rotateAnim]);
+
+    const rotateInterpolate = rotateAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: ["0deg", "360deg"],
+    });
+
+    const animatedStyle = {
+        transform: [{ rotate: rotateInterpolate }],
+    };
 
     //await BleManager.connect(props.idDevice);
     //const peripheralInfo = await BleManager.retrieveServices(props.idDevice);
@@ -48,34 +74,54 @@ function WriteMessage(props: Props) {
             return;
         }
 
-        await BleManager.disconnect(props.idDevice);
-        await BleManager.connect(props.idDevice);
+        try {
+            setControlLoad(true);
 
-        const data = Array.from(new TextEncoder().encode(textParam));
+            await BleManager.connect(props.idDevice);
 
-        const peripheralInfo = await BleManager.retrieveServices(props.idDevice);
+            const data = Array.from(new TextEncoder().encode(textParam));
 
-        const writeableChar = peripheralInfo.characteristics!.find(
-            (char) => char.properties.Write || char.properties.WriteWithoutResponse
-        );
+            const peripheralInfo = await BleManager.retrieveServices(props.idDevice);
 
-        BleManager.write(
-            props.idDevice,
-            writeableChar!.service,
-            writeableChar!.characteristic,
-            data
-        );
+            const writeableChar = peripheralInfo.characteristics!.find(
+                (char) => char.properties.Write || char.properties.WriteWithoutResponse
+            );
 
-        await BleManager.disconnect(props.idDevice);
+            const writeableCharNotify = peripheralInfo.characteristics!.find(
+                (char) => char.properties.Notify
+            );
 
-        props.setMessages([...props.messages, { message: textParam, isMe: true }]);
+            BleManager.startNotification(props.idDevice, writeableCharNotify!.service, writeableCharNotify!.characteristic);
+
+            BleManager.write(
+                props.idDevice,
+                writeableChar!.service,
+                writeableChar!.characteristic,
+                data
+            );
+
+            const messages = props.messages;
+            messages.push({ message: textParam, isMe: true });
+            props.setMessages([...messages]);
+        } catch (e) {
+            Keyboard.dismiss();
+            props.setControlModalWarn(true);
+        }
+
+        //await BleManager.disconnect(props.idDevice);
+
         setText('');
+        setControlLoad(false);
     }
  
     return (
         <View style={styles.textField}>
             <TextInput placeholder="Type something here" style={styles.input} onChangeText={(textValue) => setText(textValue)} value={text} onPress={() => props.moveScroll()} />
-            <Pressable style={styles.buttonSend} onPress={() => sendMessage(text)}><Play width={40} height={40} style={styles.image} /></Pressable>
+            <Pressable style={styles.buttonSend} onPress={() => sendMessage(text)}>{!controlLoad && <Play width={40} height={40} style={styles.image} />}
+                <Animated.View style={[animatedStyle, styles.viewLoad]}>
+                    {controlLoad && <Load width={50} height={50} style={styles.load} />}
+                </Animated.View>
+            </Pressable>
         </View>
     );
 }
@@ -101,7 +147,15 @@ const styles = StyleSheet.create({
         borderRadius: 50,
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center'
+        justifyContent: 'center',
+        position: 'relative'
+    },
+    viewLoad: {
+        position: 'absolute',
+    },
+    load: {
+        width: 50,
+        height: 50
     }
 });
 
