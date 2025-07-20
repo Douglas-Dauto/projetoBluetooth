@@ -91,7 +91,9 @@ function WriteMessage(props: Props) {
                 (char) => char.properties.Notify
             );
 
-            BleManager.startNotification(props.idDevice, writeableCharNotify!.service, writeableCharNotify!.characteristic);
+            if (writeableCharNotify) {
+                BleManager.startNotification(props.idDevice, writeableCharNotify!.service, writeableCharNotify!.characteristic);
+            }
 
             BleManager.write(
                 props.idDevice,
